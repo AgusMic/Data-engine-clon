@@ -5,7 +5,7 @@ import plotly.express as px
 # Configuración de la página
 st.set_page_config(page_title="Data Analysis Platform", layout="wide")
 
-st.title("🛡️ Data Engine v1.0")
+st.title("🥼 Asistente de Labo v1.0 🧪")
 st.markdown("---")
 
 # --- MÓDULO 1: INGESTA DE DATOS ---
