@@ -3,4 +3,4 @@ pandas
 plotly
 scikit-learn
 statsmodels
-subpase
+supabase
