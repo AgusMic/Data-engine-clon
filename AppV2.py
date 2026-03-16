@@ -6,13 +6,87 @@ from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import r2_score, mean_absolute_error
+from supabase import create_client, Client
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="Data Engine Pro", layout="wide")
 
+
+# --- CONEXIÓN A LA BASE DE DATOS (SUPABASE) ---
+@st.cache_resource
+def init_connection():
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+    return create_client(url, key)
+
+
+try:
+    supabase = init_connection()
+except Exception as e:
+    st.error("Error conectando a la base de datos. Verifica tus credenciales.")
+    st.stop()
+
+# --- GESTIÓN DE SESIÓN (MEMORIA) ---
+if "usuario" not in st.session_state:
+    st.session_state["usuario"] = None
+
+
+# --- SISTEMA DE LOGIN Y REGISTRO ---
+def mostrar_login():
+    st.title("🔐 Acceso al Asistente de Labo")
+    st.markdown("---")
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        modo = st.radio(
+            "Selecciona una opción:",
+            ["Iniciar Sesión", "Crear Cuenta nueva"],
+            horizontal=True,
+        )
+        email = st.text_input("Correo electrónico (Email)")
+        password = st.text_input("Contraseña", type="password")
+
+        if st.button("Continuar", use_container_width=True):
+            if modo == "Crear Cuenta nueva":
+                try:
+                    response = supabase.auth.sign_up(
+                        {"email": email, "password": password}
+                    )
+                    st.success(
+                        "✅ ¡Cuenta creada exitosamente! Ahora selecciona 'Iniciar Sesión' para entrar."
+                    )
+                except Exception as e:
+                    st.error(f"Error al crear la cuenta: {e}")
+
+            elif modo == "Iniciar Sesión":
+                try:
+                    response = supabase.auth.sign_in_with_password(
+                        {"email": email, "password": password}
+                    )
+                    st.session_state["usuario"] = response.user.email
+
+                    # Guardamos el registro en tu tabla SQL
+                    supabase.table("registros_acceso").insert(
+                        {"usuario_email": email}
+                    ).execute()
+
+                    # Recargamos la página para que desaparezca el login
+                    st.rerun()
+                except Exception as e:
+                    st.error("❌ Correo o contraseña incorrectos. Inténtalo de nuevo.")
+
+
+# 🛑 LA BARRERA DE SEGURIDAD 🛑
+if st.session_state["usuario"] is None:
+    mostrar_login()
+    st.stop()  # Si no hay usuario, el código se detiene aquí y no lee lo de abajo.
+
+# =====================================================================
+# A PARTIR DE AQUÍ VA EL RESTO DE TU APLICACIÓN
+# =====================================================================
+
+
 # --- FUNCIONES DE LÓGICA (BACKEND) ---
-
-
 @st.cache_data
 def ingestar_datos(archivo):
     """Detecta delimitador y maneja errores de carga."""
@@ -112,6 +186,13 @@ def entrenar_modelo_ml(df, target, features, tipo_modelo):
 
 st.title("🥼 Asistente de Labo v3.0 🧪")
 st.markdown("*Plataforma integral de ingesta, análisis predictivo y visualización.*")
+
+# --- PERFIL DEL USUARIO (NUEVO) ---
+st.sidebar.success(f"👤 Conectado como:\n**{st.session_state['usuario']}**")
+if st.sidebar.button("Cerrar Sesión"):
+    st.session_state["usuario"] = None
+    st.rerun()
+st.sidebar.markdown("---")
 
 st.sidebar.header("1. Ingesta de Datos")
 archivo_subido = st.sidebar.file_uploader("Subir CSV", type=["csv"])
@@ -284,8 +365,6 @@ if archivo_subido:
                                     value=f"{mae:.2f}",
                                     help="En las mismas unidades que tu variable a predecir.",
                                 )
-
-                                # Gráfico de Real vs Predicción
 
                                 fig_ml = px.scatter(
                                     df_res,
