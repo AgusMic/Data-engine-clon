@@ -9,7 +9,7 @@ from sklearn.metrics import r2_score, mean_absolute_error
 from supabase import create_client, Client
 
 # --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(page_title="Data Engine Pro", layout="wide")
+st.set_page_config(page_title="DF Analytics", layout="wide")
 
 
 # --- CONEXIÓN A LA BASE DE DATOS (SUPABASE) ---
@@ -34,7 +34,7 @@ if "usuario" not in st.session_state:
 
 # --- SISTEMA DE LOGIN Y REGISTRO ---
 def mostrar_login():
-    st.title("🔐 Acceso al Asistente de Labo")
+    st.title("🔐 Acceso")
     st.markdown("---")
 
     col1, col2, col3 = st.columns([1, 2, 1])
