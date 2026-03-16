@@ -23,7 +23,8 @@ def init_connection():
 try:
     supabase = init_connection()
 except Exception as e:
-    st.error("Error conectando a la base de datos. Verifica tus credenciales.")
+    # Agregamos la {e} al final para ver el error real
+    st.error(f"Error conectando a la base de datos: {e}")
     st.stop()
 
 # --- GESTIÓN DE SESIÓN (MEMORIA) ---
