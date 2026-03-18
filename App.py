@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import numpy as np
+import statsmodels.api as sm
+from scipy.optimize import curve_fit
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LinearRegression
 from sklearn.ensemble import RandomForestRegressor
@@ -23,7 +25,6 @@ def init_connection():
 try:
     supabase = init_connection()
 except Exception as e:
-    # Agregamos la {e} al final para ver el error real
     st.error(f"Error conectando a la base de datos: {e}")
     st.stop()
 
@@ -156,7 +157,6 @@ def obtener_sugerencia_grafico(df):
 
 def entrenar_modelo_ml(df, target, features, tipo_modelo):
     """Entrena un modelo de ML y devuelve métricas y resultados."""
-    # Preparamos los datos (solo numéricos y sin nulos para ML)
     df_ml = df[features + [target]].dropna()
 
     X = df_ml[features]
@@ -177,10 +177,22 @@ def entrenar_modelo_ml(df, target, features, tipo_modelo):
     r2 = r2_score(y_test, predicciones)
     mae = mean_absolute_error(y_test, predicciones)
 
-    # DataFrame para graficar
     df_resultados = pd.DataFrame({"Valor Real": y_test, "Predicción": predicciones})
 
     return r2, mae, df_resultados
+
+
+# --- FUNCIONES MATEMÁTICAS PARA AJUSTE ---
+def modelo_lineal(x, m, b):
+    return m * x + b
+
+
+def modelo_cuadratico(x, a, b, c):
+    return a * x**2 + b * x + c
+
+
+def modelo_exponencial(x, a, b):
+    return a * np.exp(b * x)
 
 
 # --- INTERFAZ DE USUARIO (FRONTEND) ---
@@ -188,7 +200,7 @@ def entrenar_modelo_ml(df, target, features, tipo_modelo):
 st.title("🥼 Asistente de Labo v3.0 🧪")
 st.markdown("*Plataforma integral de ingesta, análisis predictivo y visualización.*")
 
-# --- PERFIL DEL USUARIO (NUEVO) ---
+# --- PERFIL DEL USUARIO ---
 st.sidebar.success(f"👤 Conectado como:\n**{st.session_state['usuario']}**")
 if st.sidebar.button("Cerrar Sesión"):
     st.session_state["usuario"] = None
@@ -220,8 +232,13 @@ if archivo_subido:
             df_filtrado = df_limpio[df_limpio[col_f].isin(opciones)]
 
         # --- SISTEMA DE PESTAÑAS ---
-        tab1, tab2, tab3 = st.tabs(
-            ["📊 Exploración", "📈 Análisis Avanzado", "🤖 Machine Learning"]
+        tab1, tab2, tab3, tab4 = st.tabs(
+            [
+                "📊 Exploración",
+                "📈 Análisis Avanzado",
+                "🤖 Machine Learning",
+                "📐 Ajuste de Curvas",
+            ]
         )
 
         # PESTAÑA 1: EXPLORACIÓN BÁSICA
@@ -232,7 +249,6 @@ if archivo_subido:
                 st.metric("Filas post-filtro", df_filtrado.shape[0])
                 st.dataframe(df_filtrado.head(15), use_container_width=True)
 
-                # Descarga de CSV procesado
                 csv = df_filtrado.to_csv(index=False).encode("utf-8")
                 st.download_button(
                     "📥 Descargar CSV Procesado",
@@ -258,7 +274,6 @@ if archivo_subido:
                         "Tipo de Gráfico", opciones_graf, index=idx_tipo
                     )
 
-                    # Evitar errores si cambian las columnas drásticamente
                     idx_x = (
                         list(df_filtrado.columns).index(sug_x)
                         if sug_x in df_filtrado.columns
@@ -354,28 +369,28 @@ if archivo_subido:
                                     df_filtrado, target, features, tipo_modelo
                                 )
 
-                                st.success("¡Modelo entrenado con éxito!")
-                                c_met1, c_met2 = st.columns(2)
-                                c_met1.metric(
-                                    label="Coeficiente de Determinación ($R^2$)",
-                                    value=f"{r2:.3f}",
-                                    help="Más cerca de 1.0 es mejor.",
-                                )
-                                c_met2.metric(
-                                    label="Error Absoluto Medio (MAE)",
-                                    value=f"{mae:.2f}",
-                                    help="En las mismas unidades que tu variable a predecir.",
-                                )
+                            st.success("¡Modelo entrenado con éxito!")
+                            c_met1, c_met2 = st.columns(2)
+                            c_met1.metric(
+                                label="Coeficiente de Determinación ($R^2$)",
+                                value=f"{r2:.3f}",
+                                help="Más cerca de 1.0 es mejor.",
+                            )
+                            c_met2.metric(
+                                label="Error Absoluto Medio (MAE)",
+                                value=f"{mae:.2f}",
+                                help="En las mismas unidades que tu variable a predecir.",
+                            )
 
-                                fig_ml = px.scatter(
-                                    df_res,
-                                    x="Valor Real",
-                                    y="Predicción",
-                                    title="Precisión del Modelo: Real vs. Predicho",
-                                    template="plotly_dark",
-                                    trendline="ols",
-                                )
-                                st.plotly_chart(fig_ml, use_container_width=True)
+                            fig_ml = px.scatter(
+                                df_res,
+                                x="Valor Real",
+                                y="Predicción",
+                                title="Precisión del Modelo: Real vs. Predicho",
+                                template="plotly_dark",
+                                trendline="ols",
+                            )
+                            st.plotly_chart(fig_ml, use_container_width=True)
                         else:
                             st.warning(
                                 "⚠️ Debes seleccionar al menos una variable predictora (X)."
@@ -383,6 +398,136 @@ if archivo_subido:
             else:
                 st.info(
                     "Para usar Machine Learning necesitas al menos 20 filas de datos numéricos y 2 columnas numéricas."
+                )
+
+        # PESTAÑA 4: AJUSTE DE CURVAS Y TENDENCIAS
+        with tab4:
+            st.subheader("📐 Ajuste de Curvas Experimentales")
+            st.markdown(
+                "Encuentra la relación matemática entre dos variables o descubre tendencias ocultas."
+            )
+
+            df_num = df_filtrado.select_dtypes(include=["number"]).dropna()
+
+            if df_num.shape[1] >= 2:
+                c_ajuste1, c_ajuste2 = st.columns([1, 2])
+
+                with c_ajuste1:
+                    x_col = st.selectbox(
+                        "Variable Independiente (X)", df_num.columns, index=0
+                    )
+                    y_col = st.selectbox(
+                        "Variable Dependiente (Y)", df_num.columns, index=1
+                    )
+
+                    metodo = st.radio(
+                        "Enfoque Analítico:",
+                        [
+                            "Determinista (Física Clásica)",
+                            "Inteligente (Suavizado LOWESS)",
+                        ],
+                    )
+
+                    if metodo == "Determinista (Física Clásica)":
+                        funcion_elegida = st.selectbox(
+                            "Modelo Teórico:",
+                            [
+                                "Lineal (y = mx + b)",
+                                "Cuadrático (y = ax² + bx + c)",
+                                "Exponencial (y = A·e^(Bx))",
+                            ],
+                        )
+                    else:
+                        st.info(
+                            "💡 LOWESS dibujará la tendencia natural de los datos sin forzar una ecuación preestablecida."
+                        )
+
+                    ejecutar_ajuste = st.button(
+                        "Aplicar Ajuste", use_container_width=True
+                    )
+
+                with c_ajuste2:
+                    if ejecutar_ajuste:
+                        x_data = df_num[x_col].values
+                        y_data = df_num[y_col].values
+
+                        # Ordenar los datos en X es clave para dibujar bien las líneas continuas
+                        sort_idx = np.argsort(x_data)
+                        x_data = x_data[sort_idx]
+                        y_data = y_data[sort_idx]
+
+                        fig_fit = px.scatter(
+                            df_num,
+                            x=x_col,
+                            y=y_col,
+                            template="plotly_dark",
+                            opacity=0.6,
+                            title=f"Ajuste: {y_col} vs {x_col}",
+                        )
+
+                        try:
+                            if metodo == "Determinista (Física Clásica)":
+                                if "Lineal" in funcion_elegida:
+                                    popt, _ = curve_fit(modelo_lineal, x_data, y_data)
+                                    y_fit = modelo_lineal(x_data, *popt)
+                                    st.success(
+                                        f"**Parámetros Hallados:** m = {popt[0]:.4f} | b = {popt[1]:.4f}"
+                                    )
+
+                                elif "Cuadrático" in funcion_elegida:
+                                    popt, _ = curve_fit(
+                                        modelo_cuadratico, x_data, y_data
+                                    )
+                                    y_fit = modelo_cuadratico(x_data, *popt)
+                                    st.success(
+                                        f"**Parámetros Hallados:** a = {popt[0]:.4f} | b = {popt[1]:.4f} | c = {popt[2]:.4f}"
+                                    )
+
+                                elif "Exponencial" in funcion_elegida:
+                                    popt, _ = curve_fit(
+                                        modelo_exponencial, x_data, y_data
+                                    )
+                                    y_fit = modelo_exponencial(x_data, *popt)
+                                    st.success(
+                                        f"**Parámetros Hallados:** A = {popt[0]:.4f} | B = {popt[1]:.4f}"
+                                    )
+
+                                # Agregar la línea del modelo físico
+                                fig_fit.add_scatter(
+                                    x=x_data,
+                                    y=y_fit,
+                                    mode="lines",
+                                    name="Ajuste Teórico",
+                                    line=dict(color="red", width=3),
+                                )
+
+                            else:
+                                # Aplicar IA LOWESS
+                                lowess_res = sm.nonparametric.lowess(
+                                    y_data, x_data, frac=0.3
+                                )
+                                y_fit = lowess_res[:, 1]
+
+                                fig_fit.add_scatter(
+                                    x=x_data,
+                                    y=y_fit,
+                                    mode="lines",
+                                    name="Tendencia LOWESS",
+                                    line=dict(color="yellow", width=3),
+                                )
+                                st.success(
+                                    "Curva de tendencia calculada exitosamente mediante regresión local."
+                                )
+
+                            st.plotly_chart(fig_fit, use_container_width=True)
+
+                        except Exception as e:
+                            st.error(
+                                f"El ajuste falló. A veces los datos no tienen la forma matemática seleccionada. Error técnico: {e}"
+                            )
+            else:
+                st.info(
+                    "Necesitas al menos 2 columnas numéricas para realizar un ajuste de curvas."
                 )
 
     else:
